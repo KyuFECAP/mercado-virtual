@@ -765,7 +765,7 @@ async function api(method, path, body){
 
 
 // ─── Estado de estoque das prateleiras físicas ────────────────────────────────
-let shelfStockStatus = {}; // "shelf_id" -> { slot -> pct }
+let shelfStockStatus = {}; // "shelf_id" -> { slots, products, at }
 let stockPollTimer = null;
 
 function startStockPolling(){
@@ -779,8 +779,11 @@ async function loadShelfStatus(){
     const rows = await api('GET','/shelves/status');
     shelfStockStatus = {};
     rows.forEach(r=>{
-      if(!shelfStockStatus[r.shelf_id]) shelfStockStatus[r.shelf_id]={slots:{},at:null};
+      if(!shelfStockStatus[r.shelf_id]) shelfStockStatus[r.shelf_id]={slots:{},products:{},at:null};
       shelfStockStatus[r.shelf_id].slots[r.slot] = r.pct;
+      if(r.product_name){
+        shelfStockStatus[r.shelf_id].products[r.slot] = {name:r.product_name,price:r.product_price==null?null:Number(r.product_price)};
+      }
       // guarda o timestamp mais recente desse shelf_id
       if(!shelfStockStatus[r.shelf_id].at || r.recorded_at > shelfStockStatus[r.shelf_id].at)
         shelfStockStatus[r.shelf_id].at = r.recorded_at;
@@ -1236,9 +1239,16 @@ function renderSingleShelf(){
   document.getElementById('productInputRow').style.display = userRole==='manager' ? 'flex' : 'none';
   const tagsEl=document.getElementById('productTags');
   tagsEl.innerHTML='';
-  const prods=shelfProducts[primarySel]||[];
+  const manualProds=shelfProducts[primarySel]||[];
+  const arduinoProds=Object.values(shelfStockStatus[primarySel]?.products||{});
+  const seen=new Set();
+  const prods=[];
+  manualProds.forEach(p=>{const n=prodName(p);if(n&&!seen.has(n.toLowerCase())){seen.add(n.toLowerCase());prods.push({value:p,source:'manual'});}});
+  arduinoProds.forEach(p=>{const n=prodName(p);if(n&&!seen.has(n.toLowerCase())){seen.add(n.toLowerCase());prods.push({value:p,source:'arduino'});}});
   if(prods.length===0){tagsEl.innerHTML='<span class="empty-hint">Nenhum produto cadastrado.</span>';return;}
-  prods.forEach((p,i)=>{
+  prods.forEach((entry,i)=>{
+    const p=entry.value;
+    const fromArduino=entry.source==='arduino';
     const name = prodName(p);
     const price = prodPrice(p);
     const isMgr = userRole==='manager';
@@ -1248,10 +1258,11 @@ function renderSingleShelf(){
     const priceHtml = price != null
       ? `<span class="tag-price">R$ ${parseFloat(price).toFixed(2)}</span>`
       : (isMgr ? `<span class="tag-price" style="opacity:.4">R$ —</span>` : '');
-    const editBtn = isMgr ? `<button class="tag-edit-price" title="Editar preço" data-i="${i}">✏</button>` : '';
-    const delBtn  = isMgr ? `<button data-i="${i}">×</button>` : '';
-    t.innerHTML=`${esc(name)}${priceHtml}${editBtn}${delBtn}`;
-    if(isMgr){
+    const editBtn = isMgr && !fromArduino ? `<button class="tag-edit-price" title="Editar preço" data-i="${i}">✏</button>` : '';
+    const delBtn  = isMgr && !fromArduino ? `<button data-i="${i}">×</button>` : '';
+    const sourceBadge = fromArduino ? `<span style="font-size:9px;opacity:.65;margin-left:4px">⚖️ Arduino</span>` : '';
+    t.innerHTML=`${esc(name)}${priceHtml}${sourceBadge}${editBtn}${delBtn}`;
+    if(isMgr && !fromArduino){
       t.querySelector('button[data-i]:last-child').onclick=()=>{
         shelfProducts[primarySel].splice(i,1);
         renderShelfPanel(); renderGrid(); refreshKnownProducts(); markDirty();
@@ -1260,15 +1271,11 @@ function renderSingleShelf(){
         const cur = price!=null ? parseFloat(price).toFixed(2) : '';
         const np = prompt(`Preço de "${name}" (deixe vazio para remover):`, cur);
         if(np===null) return;
-        const entry = shelfProducts[primarySel][i];
+        const idx=shelfProducts[primarySel].findIndex(x=>prodName(x)===name);
+        if(idx<0) return;
         const trimmed = np.trim().replace(',','.');
-        if(trimmed===''){
-          shelfProducts[primarySel][i] = name;
-        } else {
-          const parsed = parseFloat(trimmed);
-          if(isNaN(parsed)){ alert('Preço inválido.'); return; }
-          shelfProducts[primarySel][i] = {name, price: parsed};
-        }
+        if(trimmed==='') shelfProducts[primarySel][idx]=name;
+        else { const parsed=parseFloat(trimmed); if(isNaN(parsed)){alert('Preço inválido.');return;} shelfProducts[primarySel][idx]={name,price:parsed}; }
         renderShelfPanel(); markDirty();
       };
     }
@@ -1491,6 +1498,15 @@ function computeRoute(){
     const[r,c]=k.split(',').map(Number);
     return isShelfLike(grid[r]?.[c]);
   }).map(([k,ps])=>[k, ps.map(p=>prodName(p))]);
+  Object.entries(shelfStockStatus).forEach(([k,data])=>{
+    const[r,c]=k.split(',').map(Number);
+    if(!isShelfLike(grid[r]?.[c])) return;
+    const names=Object.values(data.products||{}).map(p=>prodName(p)).filter(Boolean);
+    if(!names.length) return;
+    const existing=shelfEntries.find(x=>x[0]===k);
+    if(existing) existing[1]=[...new Set(existing[1].concat(names))];
+    else shelfEntries.push([k,names]);
+  });
   const found=[],missing=[];
   const itemMatches={};
   shoppingList.forEach(item=>{

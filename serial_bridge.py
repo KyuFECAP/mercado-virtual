@@ -27,8 +27,8 @@ from datetime import datetime
 #   CONFIGURAÇÃO — edite aqui antes de rodar
 # ══════════════════════════════════════════════════════════════
 
-BACKEND_URL  = "https://mercado-virtual-production.up.railway.app/api/shelves/weight"
-HW_TOKEN     = "e9027c07101c2e55c530b43ae79eb233a9f7b42cadb5e68b"
+BACKEND_URL  = "https://SEU-SITE.up.railway.app/api/shelves/weight"
+HW_TOKEN     = "COLE_SEU_TOKEN_AQUI"
 PORTA_SERIAL = None     # None = detecta automaticamente | ex: "COM3"
 BAUD_RATE    = 9600
 
@@ -249,51 +249,6 @@ def processar_linha(linha_str: str, modo_raw: bool):
 #   LOOP PRINCIPAL
 # ══════════════════════════════════════════════════════════════
 
-def thread_comandos(ser):
-    """
-    Roda em segundo plano e aceita comandos enquanto o bridge está ativo.
-    Assim você não precisa do Serial Monitor do Arduino IDE.
-    """
-    print("  Comandos disponíveis enquanto o bridge roda:")
-    print("  E = forçar envio agora")
-    print("  L = ver leitura atual")
-    print("  C = calibrar")
-    print("  T = refazer tara")
-    print("  Q = encerrar o bridge")
-    print()
-    while True:
-        try:
-            cmd = input().strip().upper()
-            global calibrando
-            if cmd == 'Q':
-                print(f"  [{agora()}] Encerrando...")
-                ser.close()
-                import os; os._exit(0)
-            elif cmd in ('E','L','T'):
-                ser.write((cmd + '\n').encode())
-                print(f"  [{agora()}] Comando '{cmd}' enviado ao Arduino")
-            elif cmd == 'C':
-                ser.write(b'C\n')
-                calibrando = True
-                print(f"  [{agora()}] Calibração iniciada.")
-                print("  Digite o peso conhecido em gramas e pressione Enter (ex.: 500).")
-            elif calibrando:
-                # Durante a calibração, o bridge deixa passar valores como 500, 250.5 etc.
-                ser.write((cmd + '\n').encode())
-                try:
-                    float(cmd.replace(',', '.'))
-                    calibrando = False
-                    print(f"  [{agora()}] Valor de calibração enviado: {cmd} g")
-                except ValueError:
-                    print(f"  [{agora()}] Entrada enviada ao Arduino: {cmd}")
-            elif cmd:
-                print(f"  Comando desconhecido: {cmd}")
-                print(f"  Use: E, L, T, C ou Q")
-        except EOFError:
-            break
-        except Exception:
-            break
-
 def main(modo_raw: bool):
     linha("═")
     print("  PRATELEIRA INTELIGENTE — Serial Bridge")
@@ -332,22 +287,94 @@ def main(modo_raw: bool):
     buffer = ""
     ultimo_heartbeat = time.time()
 
-    # ── Thread de comandos pelo terminal (sem precisar do Monitor Serial) ──
+    # ── ÚNICA thread de comandos pelo terminal ─────────────────
+    # Importante: existe somente uma thread lendo input().
+    # Isso evita que o comando "C" e o peso "500" sejam capturados
+    # por threads diferentes durante a calibração.
     def escutar_terminal():
-        """
-        Lê comandos digitados no terminal enquanto o bridge está rodando.
-        Isso substitui o Monitor Serial do Arduino IDE:
-          e = forçar envio agora
-          l = mostrar última leitura
-          t = refazer tara
-          s = status da conexão
-        """
+        global calibrando
+
         print("  Comandos disponíveis neste terminal:")
-        print("    e = forçar envio ao backend agora")
-        print("    l = mostrar última leitura recebida")
-        print("    s = status da conexão")
+        print("    E = forçar envio ao backend agora")
+        print("    L = mostrar leitura atual")
+        print("    T = refazer tara")
+        print("    C = calibrar")
+        print("    S = status da conexão")
+        print("    Q = encerrar o bridge")
         print()
+
         while True:
+            try:
+                cmd = input().strip()
+
+                # Durante a calibração, o próximo input deve ser
+                # exclusivamente o peso conhecido.
+                if calibrando:
+                    try:
+                        valor = float(cmd.replace(",", "."))
+                        if valor <= 0:
+                            print("  ⚠ Digite um peso maior que zero. Ex.: 500")
+                            continue
+
+                        ser.write((cmd.replace(",", ".") + "\\n").encode())
+                        calibrando = False
+                        print(f"  [{agora()}] Peso de calibração enviado: {valor:g} g")
+                    except ValueError:
+                        print("  ⚠ Valor inválido. Digite somente o peso em gramas. Ex.: 500")
+                    continue
+
+                cmd = cmd.upper()
+
+                if cmd == "Q":
+                    print(f"  [{agora()}] Encerrando...")
+                    ser.close()
+                    import os
+                    os._exit(0)
+
+                elif cmd == "E":
+                    ser.write(b"E\\n")
+                    print(f"  [{agora()}] Comando E enviado ao Arduino")
+
+                elif cmd == "L":
+                    ser.write(b"L\\n")
+                    print(f"  [{agora()}] Comando L enviado ao Arduino")
+
+                elif cmd == "T":
+                    ser.write(b"T\\n")
+                    print(f"  [{agora()}] Comando T enviado ao Arduino")
+
+                elif cmd == "C":
+                    ser.write(b"C\\n")
+                    calibrando = True
+                    print(f"  [{agora()}] Calibração iniciada.")
+                    print("  O Arduino fará a tara e depois pedirá o peso conhecido.")
+                    print("  Quando aparecer o pedido, digite somente o valor, por exemplo: 500")
+
+                elif cmd == "S":
+                    duracao = datetime.now() - stats["inicio"]
+                    mins = int(duracao.total_seconds() // 60)
+                    print(f"\\n  Status [{agora()}]:")
+                    print(f"    Porta    : {porta}")
+                    print(f"    Em execução há {mins} minutos")
+                    print(f"    Enviados : {stats['enviados']}")
+                    print(f"    Erros    : {stats['erros']}")
+                    print(f"    Recebidos: {stats['recebidos']} linhas do Arduino")
+                    print()
+
+                elif cmd:
+                    print(f"  ⚠ Comando desconhecido: '{cmd}'")
+                    print("  Use E, L, T, C, S ou Q")
+
+            except EOFError:
+                break
+            except Exception as e:
+                print(f"  ⚠ Erro no terminal: {e}")
+                break
+
+    t = threading.Thread(target=escutar_terminal, daemon=True)
+    t.start()
+
+    while True:
             try:
                 cmd = input().strip().lower()
                 if cmd == 'e':

@@ -87,3 +87,11 @@ python serial_bridge.py
 ```
 
 Não deixe o Monitor Serial do Arduino IDE aberto ao mesmo tempo, porque a mesma porta USB não pode ser usada pelos dois programas.
+
+
+### Calibração pelo Serial Bridge
+
+Use `C` no terminal do `serial_bridge.py`. Depois que o Arduino fizer a tara
+e pedir o peso conhecido, digite somente o valor, por exemplo `500`.
+O bridge possui uma única thread lendo o teclado, evitando conflitos durante
+a calibração.
