@@ -27,8 +27,8 @@ from datetime import datetime
 #   CONFIGURAÇÃO — edite aqui antes de rodar
 # ══════════════════════════════════════════════════════════════
 
-BACKEND_URL  = "https://SEU-SITE.up.railway.app/api/shelves/weight"
-HW_TOKEN     = "COLE_SEU_TOKEN_AQUI"
+BACKEND_URL  = "mercado-virtual-production.up.railway.app/api/shelves/weight"
+
 PORTA_SERIAL = None     # None = detecta automaticamente | ex: "COM3"
 BAUD_RATE    = 9600
 
