@@ -280,10 +280,6 @@ def main(modo_raw: bool):
     print(f"  (Não use o Serial Monitor do Arduino IDE enquanto este script estiver rodando)")
     linha()
 
-    # Thread que aceita comandos no terminal enquanto o bridge roda
-    t = threading.Thread(target=thread_comandos, args=(ser,), daemon=True)
-    t.start()
-
     buffer = ""
     ultimo_heartbeat = time.time()
 
