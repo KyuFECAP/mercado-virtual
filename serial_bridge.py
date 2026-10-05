@@ -371,56 +371,7 @@ def main(modo_raw: bool):
     t.start()
 
     while True:
-            try:
-                cmd = input().strip().lower()
-                if cmd == 'e':
-                    print(f"  Enviando comando E para o Arduino...")
-                    ser.write(b'e')
-                elif cmd == 'l':
-                    print(f"  Enviando comando L para o Arduino...")
-                    ser.write(b'l')
-                elif cmd == 't':
-                    print(f"  Enviando comando T para o Arduino (tara)...")
-                    ser.write(b't')
-                elif cmd == 's':
-                    duracao = datetime.now() - stats["inicio"]
-                    mins = int(duracao.total_seconds() // 60)
-                    print(f"\n  Status [{agora()}]:")
-                    print(f"    Porta    : {porta}")
-                    print(f"    Em execução há {mins} minutos")
-                    print(f"    Enviados : {stats['enviados']}")
-                    print(f"    Erros    : {stats['erros']}")
-                    print(f"    Recebidos: {stats['recebidos']} linhas do Arduino")
-                    print()
-                elif cmd:
-                    print(f"  Comando desconhecido: '{cmd}' — use e, l, t ou s")
-            except EOFError:
-                break
-            except Exception:
-                break
-
-    t = threading.Thread(target=escutar_terminal, daemon=True)
-    t.start()
-
-    while True:
         try:
-            # Heartbeat a cada 30s para mostrar que está vivo
-            if time.time() - ultimo_heartbeat > 30:
-                duracao = datetime.now() - stats["inicio"]
-                horas, resto = divmod(int(duracao.total_seconds()), 3600)
-                mins = resto // 60
-                print(f"\n  [{agora()}] Em execução há {horas}h{mins:02d}m "
-                      f"| Enviados: {stats['enviados']} "
-                      f"| Erros: {stats['erros']} "
-                      f"| Linhas recebidas: {stats['recebidos']}")
-                if stats["recebidos"] == 0:
-                    aviso("Nenhuma linha recebida ainda — verifique:")
-                    info("  1. O Arduino está ligado e o código foi enviado?")
-                    info("  2. A porta serial está correta?")
-                    info("  3. Tente digitar 'L' ou 'E' no Monitor Serial do Arduino IDE")
-                    info("     (mas feche o Monitor Serial logo depois — ele bloqueia a porta!)")
-                ultimo_heartbeat = time.time()
-
             if ser.in_waiting:
                 byte = ser.read().decode("utf-8", errors="ignore")
 
