@@ -1,0 +1,115 @@
+# Mercado Virtual — Arduino → Leituras → Prateleiras
+
+## Fluxo atual
+
+```text
+Arduino + HX711
+      ↓ USB
+serial_bridge.py
+      ↓ Internet + token
+Railway / backend
+      ↓
+📡 Leituras recebidas do Arduino
+      ↓ gerente escolhe
+🗺️ Prateleira do mapa + produto (opcional)
+```
+
+O Arduino **não escolhe mais a prateleira do mapa**. Ele envia apenas seu identificador (`ARDUINO_01`), o slot, o peso e a porcentagem.
+
+## Estrutura
+
+- `server.js` — backend Express + SQLite
+- `public/index.html` — site
+- `arduino_prateleira(1).ino` — código do Arduino/HX711
+- `serial_bridge.py` — ponte USB → API
+- `package.json` — configuração do Railway/Node
+
+## Railway
+
+O repositório deve ter `package.json` e `server.js` na raiz.
+
+Start command:
+
+```text
+npm start
+```
+
+O servidor usa `process.env.PORT` automaticamente.
+
+## Arduino
+
+No código:
+
+```cpp
+const char ARDUINO_ID[] = "ARDUINO_01";
+```
+
+Esse valor é somente o nome do dispositivo. Para outro Arduino, troque por outro identificador, por exemplo `ARDUINO_02`.
+
+A prateleira é escolhida **somente pelo gerente no site**.
+
+## Calibração
+
+Com o `serial_bridge.py` rodando, digite:
+
+```text
+C
+```
+
+Retire o peso quando solicitado. Depois coloque o peso conhecido e digite seu valor, por exemplo:
+
+```text
+500
+```
+
+O bridge agora permite valores numéricos durante a calibração, em vez de aceitar somente os comandos E/L/T/C/Q.
+
+A calibração mostra o fator calculado. Se quiser deixar o fator permanente, copie o valor mostrado para `FATOR[]` no `.ino` e faça novo upload.
+
+## Token
+
+No site, entre como gerente → **⚙️ Configurações** → **Conexão com o Arduino** → **Gerar token**.
+
+Cole o token em `HW_TOKEN` no `serial_bridge.py`.
+
+## Executar bridge
+
+Instale:
+
+```bash
+pip install pyserial requests
+```
+
+Depois:
+
+```bash
+python serial_bridge.py
+```
+
+Não deixe o Monitor Serial do Arduino IDE aberto ao mesmo tempo, porque a mesma porta USB não pode ser usada pelos dois programas.
+
+
+### Calibração pelo Serial Bridge
+
+Use `C` no terminal do `serial_bridge.py`. Depois que o Arduino fizer a tara
+e pedir o peso conhecido, digite somente o valor, por exemplo `500`.
+O bridge possui uma única thread lendo o teclado, evitando conflitos durante
+a calibração.
+
+
+### Estoque automático por peso (V6)
+
+- Cadastre em cada produto o peso de referência de uma unidade, em gramas.
+- A quantidade estimada é `arredondar(peso_atual / peso_unitário)`.
+- Depois que um slot do Arduino for vinculado a uma prateleira e produto, as próximas leituras desse mesmo Arduino/slot herdam automaticamente o vínculo.
+- Produtos já cadastrados recebem `unit_weight = 0` por padrão; preencha o peso unitário para habilitar o cálculo da quantidade.
+
+
+### V7 — correções de cadastro, atualização e visualização
+
+- Corrigida a criação de produto: o peso unitário era enviado sem ter sido definido no JavaScript.
+- Adicionado campo de quantidade inicial no cadastro e edição do produto.
+- O vínculo de uma leitura agora é aplicado ao histórico inteiro do mesmo Arduino/slot, para atualizar imediatamente a leitura mais recente e preservar o vínculo nas próximas.
+- O status da prateleira consulta a última leitura por Arduino/slot.
+- Leituras do Arduino usam layout responsivo para evitar que texto e controles escapem dos cards.
+- A quantidade mostrada ao cliente é a quantidade estimada pelo peso quando há peso unitário; sem isso, usa a quantidade inicial cadastrada.
