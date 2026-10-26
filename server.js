@@ -203,6 +203,19 @@ app.get('/api/auth/me', auth, async (req, res) => {
 
 // ─── Layouts ──────────────────────────────────────────────────────────────────
 
+// Publica todas as plantas publicadas, independentemente de qual gerente as criou.
+app.get('/api/layouts/published', async (req, res) => {
+  const layouts = await all(`
+    SELECT l.id, l.name, l.is_active, l.created_at, l.updated_at,
+           u.username AS created_by_name, l.data
+    FROM layouts l
+    LEFT JOIN users u ON u.id = l.created_by
+    WHERE l.is_active = 1
+    ORDER BY l.updated_at DESC, l.id DESC
+  `);
+  res.json(layouts.map(layout => ({ ...layout, data: JSON.parse(layout.data) })));
+});
+
 app.get('/api/layouts/active', async (req, res) => {
   const layout = await get(`
     SELECT l.*, u.username as created_by_name
@@ -230,7 +243,6 @@ app.get('/api/layouts/:id', managerOnly, async (req, res) => {
 app.post('/api/layouts', managerOnly, async (req, res) => {
   const { name, data, publish } = req.body ?? {};
   if (!name || !data) return res.status(400).json({ error: 'Informe nome e dados' });
-  if (publish) await run('UPDATE layouts SET is_active=0 WHERE created_by=?', [req.user.id]);
   const r = await run(
     'INSERT INTO layouts (name,data,is_active,created_by) VALUES (?,?,?,?)',
     [name, JSON.stringify(data), publish ? 1 : 0, req.user.id]
@@ -244,7 +256,6 @@ app.put('/api/layouts/:id', managerOnly, async (req, res) => {
   const { name, data, publish } = req.body ?? {};
   await run('INSERT INTO layout_history (layout_id,data,saved_by) VALUES (?,?,?)',
             [existing.id, existing.data, req.user.id]);
-  if (publish) await run('UPDATE layouts SET is_active=0 WHERE created_by=?', [req.user.id]);
   await run(
     "UPDATE layouts SET name=?,data=?,is_active=?,updated_at=datetime('now') WHERE id=?",
     [name ?? existing.name, JSON.stringify(data),
@@ -256,7 +267,6 @@ app.put('/api/layouts/:id', managerOnly, async (req, res) => {
 app.post('/api/layouts/:id/publish', managerOnly, async (req, res) => {
   const layout = await get('SELECT id FROM layouts WHERE id=? AND created_by=?', [req.params.id, req.user.id]);
   if (!layout) return res.status(404).json({ error: 'Layout não encontrado' });
-  await run('UPDATE layouts SET is_active=0 WHERE created_by=?', [req.user.id]);
   await run("UPDATE layouts SET is_active=1,updated_at=datetime('now') WHERE id=?", [layout.id]);
   res.json({ ok: true });
 });
@@ -501,11 +511,25 @@ app.put('/api/shelves/readings/:id/assign', managerOnly, async (req, res) => {
     return res.status(400).json({ error: 'Prateleira inválida' });
   }
 
-  // Apply the mapping to the entire Arduino/slot history. This makes the latest
-  // reading visible immediately instead of waiting for the next sensor transmission.
-  await run('UPDATE shelf_weights SET product_id=?, assigned_shelf=? WHERE shelf_id=? AND slot=?',
-            [productId, assignedShelf, reading.shelf_id, reading.slot]);
+  // A atribuição é individual: altera somente a leitura selecionada.
+  // Leituras futuras continuam herdando o último vínculo configurado para o slot.
+  await run('UPDATE shelf_weights SET product_id=?, assigned_shelf=? WHERE id=?',
+            [productId, assignedShelf, reading.id]);
   res.json({ ok: true });
+});
+
+// Exclui uma única leitura do histórico (somente gerente).
+app.delete('/api/shelves/readings/:id', managerOnly, async (req, res) => {
+  const reading = await get('SELECT id FROM shelf_weights WHERE id=?', [req.params.id]);
+  if (!reading) return res.status(404).json({ error: 'Leitura não encontrada' });
+  await run('DELETE FROM shelf_weights WHERE id=?', [req.params.id]);
+  res.json({ ok: true });
+});
+
+// Limpa todas as leituras recebidas. A ação não pode ser desfeita.
+app.delete('/api/shelves/readings', managerOnly, async (req, res) => {
+  const result = await run('DELETE FROM shelf_weights');
+  res.json({ ok: true, deleted: result.changes || 0 });
 });
 
 // ─── Health check ─────────────────────────────────────────────────────────────
