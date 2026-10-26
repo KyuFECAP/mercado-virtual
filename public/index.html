@@ -196,6 +196,8 @@ svg.route-overlay{position:absolute;top:0;left:0;pointer-events:none;}
 .reading-assignment select{box-sizing:border-box;width:100%;max-width:100%;min-width:0;padding:9px 8px;border:1px solid var(--line);border-radius:7px;background:var(--white);font-size:12px;}
 .reading-assignment button{grid-column:1/-1;border:none;background:var(--green);color:#fff;border-radius:7px;padding:9px 12px;font-size:12px;cursor:pointer;font-weight:600;white-space:normal;overflow-wrap:anywhere;min-width:0;}
 .reading-assignment button:hover{filter:brightness(.95);}
+.reading-assignment .reading-delete{background:#fff;color:#a52b2b;border:1px solid #d9a6a6;}
+.reading-assignment .reading-delete:hover{background:#fff4f4;}
 .reading-badge{display:inline-block;background:var(--paper-dark);border-radius:10px;padding:2px 6px;margin-left:4px;}
 .products-empty{font-size:12px;color:var(--ink-soft);font-style:italic;padding:5px 0;}
 .products-summary{font-size:11.5px;color:var(--ink-soft);margin-bottom:8px;line-height:1.45;}
@@ -348,6 +350,22 @@ datalist{display:none;}
 .toolbar-group-label { font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-soft); padding:0 2px; }
 .toolbar-group-row { display:flex; gap:4px; flex-wrap:wrap; }
 
+
+/* Correção responsiva dos formulários de configurações do gerente */
+#settingsCard .setting-row{display:flex;gap:8px;align-items:stretch;min-width:0;width:100%;margin-bottom:8px;}
+#settingsCard .setting-row input{flex:1 1 140px;min-width:0;width:100%;max-width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:7px;font-size:13px;}
+#settingsCard .setting-row button{flex:0 0 auto;min-height:36px;padding:0 14px;white-space:nowrap;}
+#settingsCard .settings-section{padding:12px;border:1px solid var(--line);border-radius:9px;background:#fffefa;margin-top:10px;min-width:0;}
+#settingsCard .settings-fields{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;}
+#settingsCard .settings-create-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:center;}
+#settingsCard input{box-sizing:border-box;min-width:0;width:100%;}
+#settingsCard .err-msg{overflow-wrap:anywhere;margin:6px 0 0;}
+@media(max-width:560px){
+  #settingsCard .settings-create-row{grid-template-columns:minmax(0,1fr);}
+  #settingsCard .settings-create-row button,#settingsCard .setting-row button{width:100%;}
+  #settingsCard .setting-row{flex-wrap:wrap;}
+}
+
 </style>
 </head>
 <body>
@@ -438,6 +456,16 @@ datalist{display:none;}
       <button class="btn-save-as" id="saveAsBtn">Salvar como…</button>
       <button class="btn-save" id="saveCurBtn">Salvar</button>
     </div>
+  </div>
+
+  <div class="card" id="publishedLayoutsCard" style="display:none;margin-bottom:16px;">
+    <div class="panel-title">Plantas disponíveis</div>
+    <div class="small-note" style="margin-bottom:8px;">Escolha qual planta do mercado deseja visualizar.</div>
+    <div class="setting-row" style="align-items:center;">
+      <select id="publishedLayoutsSelect" aria-label="Escolher planta publicada" style="flex:1;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:7px;background:var(--white);font:inherit;"></select>
+      <button id="loadPublishedLayoutBtn" type="button" style="border:0;background:var(--ink);color:var(--paper);border-radius:7px;padding:9px 14px;cursor:pointer;white-space:nowrap;">Abrir planta</button>
+    </div>
+    <div class="small-note" id="publishedLayoutsHint" role="status"></div>
   </div>
 
   <div class="layout">
@@ -562,8 +590,9 @@ datalist{display:none;}
         <div class="card manager-only-panel" id="arduinoPanel">
           <div class="panel-title">📡 Leituras recebidas do Arduino</div>
           <div class="products-summary">As leituras chegam aqui primeiro. O Arduino não escolhe nenhuma prateleira: o gerente define o destino no próprio site.</div>
-          <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+          <div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
             <button class="ghost-btn" id="refreshReadingsBtn">↻ Atualizar leituras</button>
+            <button class="ghost-btn" id="clearReadingsBtn" style="color:#a52b2b;border-color:#d9a6a6;">🗑 Apagar todas</button>
           </div>
           <div class="reading-list" id="readingList"><span class="products-empty">Carregando leituras…</span></div>
         </div>
@@ -689,27 +718,27 @@ datalist{display:none;}
 
       <!-- Manager settings -->
       <div class="card" id="settingsCard" style="display:none;">
-        <div class="panel-title">Configurações do gerente</div>
-        <div style="margin-bottom:10px;">
-          <div class="small-note" style="margin-bottom:6px;font-weight:500;">Alterar senha</div>
-          <div class="setting-row">
-            <input type="password" id="curPassInput" placeholder="senha atual">
+        <div class="panel-title">⚙️ Configurações do gerente</div>
+        <section class="settings-section">
+          <div class="small-note" style="margin:0 0 8px;font-weight:600;">Alterar senha</div>
+          <div class="settings-fields">
+            <input type="password" id="curPassInput" autocomplete="current-password" placeholder="senha atual">
+            <div class="setting-row">
+              <input type="password" id="newPassInput" autocomplete="new-password" placeholder="nova senha">
+              <button id="changePassBtn" type="button">Salvar</button>
+            </div>
           </div>
-          <div class="setting-row">
-            <input type="password" id="newPassInput" placeholder="nova senha">
-            <button id="changePassBtn">Salvar</button>
+          <div class="err-msg" id="passErr" aria-live="polite"></div>
+        </section>
+        <section class="settings-section">
+          <div class="small-note" style="margin:0 0 8px;font-weight:600;">Criar outro gerente</div>
+          <div class="settings-create-row">
+            <input type="text" id="newMgrUser" autocomplete="off" placeholder="usuário">
+            <input type="password" id="newMgrPass" autocomplete="new-password" placeholder="senha">
+            <button id="createMgrBtn" type="button">Criar</button>
           </div>
-          <div class="err-msg" id="passErr"></div>
-        </div>
-        <div>
-          <div class="small-note" style="margin-bottom:6px;font-weight:500;">Criar outro gerente</div>
-          <div class="setting-row">
-            <input type="text" id="newMgrUser" placeholder="usuário">
-            <input type="password" id="newMgrPass" placeholder="senha">
-            <button id="createMgrBtn">Criar</button>
-          </div>
-          <div class="err-msg" id="mgrErr"></div>
-        </div>
+          <div class="err-msg" id="mgrErr" aria-live="polite"></div>
+        </section>
       </div>
     </div>
   </div>
@@ -927,6 +956,60 @@ document.getElementById('switchBtn').onclick=()=>{
 // Link "entre com sua conta" no hint de visitante
 document.getElementById('loginToSaveLink').onclick=()=>showGate();
 
+// ─── Plantas publicadas para clientes e visitantes ────────────────────────────
+let publishedLayouts = [];
+
+async function loadPublishedLayouts(preferredId=null){
+  const select=document.getElementById('publishedLayoutsSelect');
+  const hint=document.getElementById('publishedLayoutsHint');
+  try{
+    publishedLayouts=await api('GET','/layouts/published');
+    select.innerHTML='';
+    if(!publishedLayouts.length){
+      const opt=document.createElement('option');
+      opt.value=''; opt.textContent='Nenhuma planta publicada';
+      select.appendChild(opt);
+      defaultDemo();
+      currentLayoutId=null; currentLayoutName=null;
+      hint.textContent='Nenhum gerente publicou uma planta ainda. Exibindo a planta de demonstração.';
+      setStatus('Nenhuma planta publicada',false);
+      return;
+    }
+    publishedLayouts.forEach(layout=>{
+      const opt=document.createElement('option');
+      opt.value=String(layout.id);
+      opt.textContent=layout.name+(layout.created_by_name?' — '+layout.created_by_name:'');
+      select.appendChild(opt);
+    });
+    const wanted=preferredId ?? currentLayoutId;
+    const chosen=publishedLayouts.find(l=>String(l.id)===String(wanted))||publishedLayouts[0];
+    select.value=String(chosen.id);
+    applyLayoutData(chosen.data);
+    currentLayoutId=chosen.id; currentLayoutName=chosen.name;
+    hint.textContent=publishedLayouts.length+' planta(s) publicada(s) disponível(is).';
+    setStatus('Planta publicada: '+chosen.name,true);
+  }catch(e){
+    publishedLayouts=[];
+    select.innerHTML='<option value="">Erro ao carregar plantas</option>';
+    defaultDemo();
+    currentLayoutId=null; currentLayoutName=null;
+    hint.textContent='Não foi possível carregar as plantas publicadas.';
+    setStatus('Erro ao carregar plantas',false);
+    console.warn('Erro ao carregar plantas publicadas:',e.message);
+  }
+}
+
+document.getElementById('loadPublishedLayoutBtn').onclick=()=>{
+  const id=document.getElementById('publishedLayoutsSelect').value;
+  const layout=publishedLayouts.find(l=>String(l.id)===String(id));
+  if(!layout) return;
+  applyLayoutData(layout.data);
+  currentLayoutId=layout.id; currentLayoutName=layout.name;
+  setStatus('Planta publicada: '+layout.name,true);
+  document.getElementById('routeCard').style.display='none';
+  renderAll();
+};
+
 // ─── Enter app ────────────────────────────────────────────────────────────────
 async function enterApp(){
   hideGate();
@@ -944,20 +1027,7 @@ async function enterApp(){
     startStockPolling();
     document.getElementById('arduinoStatusBar').style.display='flex';
   } else {
-    try{
-      const layout = await api('GET','/layouts/active');
-      if(layout && layout.data){
-        applyLayoutData(layout.data);
-        currentLayoutId=layout.id; currentLayoutName=layout.name;
-        setStatus('Planta publicada: '+layout.name, true);
-      } else {
-        defaultDemo();
-        setStatus('Nenhuma planta publicada ainda', false);
-      }
-    }catch{
-      defaultDemo();
-      setStatus('Não foi possível carregar a planta', false);
-    }
+    await loadPublishedLayouts();
     renderAll();
     if(userRole==='customer') await loadSavedLists();
     startStockPolling();
@@ -979,6 +1049,7 @@ function applyRoleUI(){
   document.getElementById('gridHint').style.display = isMgr ? 'block' : 'none';
   // paineis
   document.getElementById('libraryPanel').style.display = isMgr ? 'block' : 'none';
+  document.getElementById('publishedLayoutsCard').style.display = isMgr ? 'none' : 'block';
   document.getElementById('managerArea').style.display = isMgr ? 'block' : 'none';
   document.getElementById('settingsCard').style.display = 'none';
   document.getElementById('hwCard').style.display = isMgr ? 'block' : 'none';
@@ -1100,7 +1171,7 @@ async function saveCurrentLayout(newName, publish){
   const data = currentData();
   try{
     if(currentLayoutId && !newName){
-      await api('PUT',`/layouts/${currentLayoutId}`,{data, publish: publish||false});
+      await api('PUT',`/layouts/${currentLayoutId}`,{data, ...(publish ? {publish:true} : {})});
     } else {
       const res = await api('POST','/layouts',{name, data, publish: publish||false});
       currentLayoutId=res.id; currentLayoutName=name;
@@ -1881,18 +1952,27 @@ function renderManagerReadings(){
           <option value="">${r.product_name?'Remover produto':'Produto (opcional)…'}</option>
           ${productOptions}
         </select>
-        <button>Salvar</button>
+        <button class="reading-save">Salvar esta leitura</button>
+        <button class="reading-delete" type="button">🗑 Apagar esta leitura</button>
       </div>`;
     const shelfSelect=row.querySelector('.reading-shelf');
     const productSelect=row.querySelector('.reading-product');
     if(r.assigned_shelf) shelfSelect.value=String(r.assigned_shelf);
     if(r.product_id) productSelect.value=String(r.product_id);
-    row.querySelector('button').onclick=async()=>{
+    row.querySelector('.reading-save').onclick=async()=>{
       try{
         await api('PUT',`/shelves/readings/${r.id}/assign`,{
           shelf_key:shelfSelect.value||null,
           product_id:productSelect.value||null
         });
+        await loadManagerReadings();
+        await loadShelfStatus();
+      }catch(e){alert(e.message);}
+    };
+    row.querySelector('.reading-delete').onclick=async()=>{
+      if(!confirm(`Apagar somente esta leitura do Arduino (ID ${r.id})?`)) return;
+      try{
+        await api('DELETE',`/shelves/readings/${r.id}`);
         await loadManagerReadings();
         await loadShelfStatus();
       }catch(e){alert(e.message);}
@@ -1931,6 +2011,16 @@ document.getElementById('createProductBtn').onclick=async()=>{
   }catch(e){err.textContent=e.message;}
 };
 document.getElementById('refreshReadingsBtn').onclick=loadManagerReadings;
+document.getElementById('clearReadingsBtn').onclick=async()=>{
+  if(!confirm('Apagar TODAS as leituras do Arduino? Essa ação não pode ser desfeita e as prateleiras vinculadas ficarão sem leituras até receberem novos dados.')) return;
+  if(!confirm('Confirma novamente a exclusão de todas as leituras?')) return;
+  try{
+    await api('DELETE','/shelves/readings');
+    await loadManagerReadings();
+    await loadShelfStatus();
+    alert('Todas as leituras do Arduino foram apagadas.');
+  }catch(e){alert(e.message);}
+};
 
 // ─── Hardware tokens ──────────────────────────────────────────────────────────
 async function loadHwTokens(){

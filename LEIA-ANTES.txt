@@ -1,0 +1,15 @@
+MERCADO VIRTUAL V9 — LEITURAS DO ARDUINO
+
+Alterações:
+- Botão para apagar todas as leituras do Arduino (com confirmação dupla).
+- Botão para apagar uma leitura individual.
+- A atribuição de prateleira/produto afeta somente a leitura selecionada, em vez de alterar todo o histórico do mesmo slot.
+
+INSTALAÇÃO SEGURA:
+1. Faça uma cópia de segurança da pasta atual e do banco mercado.db.
+2. Extraia este ZIP.
+3. Copie server.js e a pasta public/index.html para a pasta existente, substituindo os arquivos antigos.
+4. NÃO substitua nem apague mercado.db, mercado.db-wal ou mercado.db-shm; eles não estão incluídos neste ZIP para preservar seus dados locais.
+5. Reinicie o servidor com npm start.
+
+A exclusão de leituras é permanente. Apagar todas as leituras também remove os vínculos que estavam guardados no histórico; depois será necessário direcionar uma nova leitura do Arduino para a prateleira/produto.
