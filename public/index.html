@@ -1582,11 +1582,11 @@ function computeRoute(){
   const entrance=findCell('entrance');
   if(!entrance) return{error:'Defina uma "Entrada" na planta.'};
   const checkout=findCell('checkout');
-  // inclui tanto prateleiras quanto seções especiais
+  // Inclui prateleiras e seções especiais com produtos cadastrados.
   const shelfEntries=Object.entries(shelfProducts).filter(([k])=>{
     const[r,c]=k.split(',').map(Number);
     return isShelfLike(grid[r]?.[c]);
-  }).map(([k,ps])=>[k, ps.map(p=>prodName(p))]);
+  }).map(([k,ps])=>[k,ps.map(p=>prodName(p))]);
   Object.entries(shelfStockStatus).forEach(([k,data])=>{
     const[r,c]=k.split(',').map(Number);
     if(!isShelfLike(grid[r]?.[c])) return;
@@ -1603,10 +1603,12 @@ function computeRoute(){
     if(m.length){itemMatches[item]=m;found.push(item);}else missing.push(item);
   });
   if(!found.length) return{error:'Nenhum item encontrado nas prateleiras. Cadastre produtos primeiro.',missing};
+
+  // Primeiro gera uma rota válida usando vizinho mais próximo.
   let remaining=new Set();found.forEach(it=>itemMatches[it].forEach(k=>remaining.add(k)));
-  let current=entrance;const stops=[];const fullPath=[current];const warnings=[];
+  let current=entrance;const greedyStops=[];const warnings=[];
   while(remaining.size>0){
-    const{dist,prev}=bfsFrom(current[0],current[1]);
+    const{dist}=bfsFrom(current[0],current[1]);
     let bestKey=null,bestDist=Infinity,bestNb=null;
     remaining.forEach(k=>{
       const[r,c]=k.split(',').map(Number);
@@ -1615,32 +1617,76 @@ function computeRoute(){
       });
     });
     if(!bestKey){
-      remaining.forEach(k=>{
-        shoppingList.filter(it=>(itemMatches[it]||[]).includes(k)).forEach(it=>{if(!missing.includes(it))missing.push(it);});
-      });
+      remaining.forEach(k=>shoppingList.filter(it=>(itemMatches[it]||[]).includes(k)).forEach(it=>{if(!missing.includes(it))missing.push(it);}));
       warnings.push('Algumas prateleiras não são acessíveis (verifique paredes que bloqueiam o acesso).');
-      remaining=new Set();break;
+      break;
     }
-    const seg=rebuildPath(prev,bestNb[0],bestNb[1]);
-    seg.shift();fullPath.push(...seg);current=bestNb;
-    const[sr,sc]=bestKey.split(',').map(Number);
-    const servedHere=shoppingList.filter(it=>(itemMatches[it]||[]).includes(bestKey));
-    const cellT=grid[sr][sc];
+    const[sr,sc]=bestKey.split(',').map(Number),cellT=grid[sr][sc];
     const stopLabel=SECTION_NAMES[cellT]?(SECTION_ICONS[cellT]+' '+SECTION_NAMES[cellT]):'Prateleira';
-    stops.push({key:bestKey,r:sr,c:sc,items:servedHere,label:stopLabel});
+    greedyStops.push({key:bestKey,r:sr,c:sc,label:stopLabel});
+    current=bestNb;
     remaining.delete(bestKey);
+    const servedKeys=new Set(greedyStops.map(st=>st.key));
     const stillNeeded=new Set();
-    found.forEach(it=>{
-      if(!stops.some(s=>s.items.includes(it)))(itemMatches[it]||[]).forEach(k=>stillNeeded.add(k));
-    });
+    found.forEach(it=>{if(!greedyStops.some(st=>(itemMatches[it]||[]).includes(st.key)))(itemMatches[it]||[]).forEach(k=>stillNeeded.add(k));});
     remaining=new Set([...remaining].filter(k=>stillNeeded.has(k)));
   }
-  if(checkout){
-    const{dist,prev}=bfsFrom(current[0],current[1]);
-    if(dist[checkout[0]][checkout[1]]<Infinity){
-      const seg=rebuildPath(prev,checkout[0],checkout[1]);seg.shift();fullPath.push(...seg);
-    } else warnings.push('Caixa não acessível a partir do último corredor.');
-  } else warnings.push('Nenhum caixa definido — rota termina na última prateleira.');
+
+  // Mede a distância real de uma ordem usando BFS e o melhor acesso disponível
+  // a cada prateleira. Assim o 2-opt considera corredores e obstáculos, não linha reta.
+  function evaluateOrder(order,buildPath=false){
+    let pos=entrance,total=0,path=[entrance];
+    for(const stop of order){
+      const{dist,prev}=bfsFrom(pos[0],pos[1]);
+      const[r,c]=[stop.r,stop.c];let access=null,best=Infinity;
+      nbrs(r,c).forEach(([nr,nc])=>{if(dist[nr][nc]<best){best=dist[nr][nc];access=[nr,nc];}});
+      if(!access||!Number.isFinite(best)) return{cost:Infinity,path};
+      total+=best;
+      if(buildPath){const seg=rebuildPath(prev,access[0],access[1]);seg.shift();path.push(...seg);}
+      pos=access;
+    }
+    if(checkout){
+      const{dist,prev}=bfsFrom(pos[0],pos[1]);
+      const d=dist[checkout[0]][checkout[1]];
+      if(Number.isFinite(d)){total+=d;if(buildPath){const seg=rebuildPath(prev,checkout[0],checkout[1]);seg.shift();path.push(...seg);}}
+      else return{cost:Infinity,path};
+    }
+    return{cost:total,path};
+  }
+
+  // 2-opt: tenta inverter trechos da ordem para reduzir a distância total.
+  // Limite de tentativas mantém a interface responsiva em plantas/listas grandes.
+  let ordered=greedyStops.slice();
+  let bestCost=evaluateOrder(ordered).cost;
+  let improved=true,attempts=0;const maxAttempts=250;
+  while(improved&&attempts<maxAttempts&&ordered.length>=3){
+    improved=false;
+    outer: for(let i=0;i<ordered.length-1;i++){
+      for(let j=i+1;j<ordered.length;j++){
+        if(j===i+1) continue;
+        attempts++;
+        const candidate=ordered.slice(0,i).concat(ordered.slice(i,j+1).reverse(),ordered.slice(j+1));
+        const cost=evaluateOrder(candidate).cost;
+        if(cost+1e-9<bestCost){ordered=candidate;bestCost=cost;improved=true;break outer;}
+        if(attempts>=maxAttempts) break outer;
+      }
+    }
+  }
+
+  // Atribui cada item à primeira parada correspondente, evitando duplicá-lo
+  // quando o mesmo produto aparece em mais de uma prateleira.
+  const assigned=new Set();
+  const stops=ordered.map(st=>{
+    const items=found.filter(it=>!assigned.has(it)&&(itemMatches[it]||[]).includes(st.key));
+    items.forEach(it=>assigned.add(it));
+    return {...st,items};
+  }).filter(st=>st.items.length>0);
+  // Recalcula a rota final com as paradas efetivamente necessárias.
+  const finalRoute=evaluateOrder(stops,true);
+  const fullPath=finalRoute.path;
+  if(checkout&&!Number.isFinite(finalRoute.cost)) warnings.push('Caixa não acessível a partir da última prateleira.');
+  if(!checkout) warnings.push('Nenhum caixa definido — rota termina na última prateleira.');
+  found.forEach(it=>{if(!assigned.has(it)&&!missing.includes(it))missing.push(it);});
   return{stops,fullPath,missing,warnings,totalSteps:fullPath.length-1,hasCheckout:!!checkout};
 }
 
